@@ -1,0 +1,29 @@
+# 可选：用 conda 创建独立环境（在仓库根目录执行）
+# conda env create -f EWC_LoRA_repro/environment.yml
+# conda activate ewc-lora-libcontinual
+#
+# 云 GPU：若需固定 CUDA 12.x，可用 conda 安装 pytorch-cuda=12.4 等，或改用 README「云服务器」
+# 中的 pip + 官方 cu12x wheel，与实例驱动一致即可（无需 CUDA 13）。
+
+name: ewc-lora-libcontinual
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - torch>=1.12.0
+      - torchvision>=0.13.0
+      - timm>=0.6.7
+      - numpy>=1.21.0
+      - pandas>=1.1.0
+      - Pillow>=9.0.0
+      - PyYAML>=6.0
+      - scikit-learn>=1.0.0
+      - tqdm>=4.64.0
+      - diffdist==0.1
+      - continuum>=1.2.0
+      - regex>=2022.0.0
+      - ftfy>=6.0.0

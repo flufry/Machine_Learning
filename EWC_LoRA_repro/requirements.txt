@@ -1,0 +1,20 @@
+# LibContinual + EWC-LoRA (ViT / timm) 运行依赖
+# 安装：在 LibContinual 仓库根目录执行  pip install -r EWC_LoRA_repro/requirements.txt
+# 若已按仓库根目录 requirements.txt 装好环境，仅需确认含 timm 即可。
+#
+# 云 GPU：勿依赖本文件里的 torch 版本匹配你的 CUDA。请先看 README「云服务器」，用官方 wheel
+# 安装 torch/torchvision 后，再 pip install -r EWC_LoRA_repro/requirements-cloud.txt
+
+torch>=1.12.0
+torchvision>=0.13.0
+timm>=0.6.7
+numpy>=1.21.0
+pandas>=1.1.0
+Pillow>=9.0.0
+PyYAML>=6.0
+scikit-learn>=1.0.0
+tqdm>=4.64.0
+diffdist==0.1
+continuum>=1.2.0
+regex>=2022.0.0
+ftfy>=6.0.0
