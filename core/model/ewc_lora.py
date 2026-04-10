@@ -144,7 +144,7 @@ class EWCLoRA(Finetune):
         if self.count_updates != 0:
             ewc_loss = 0.0
             new_a_params = filter(lambda p: getattr(p, "_is_new_a", False), self._network.parameters())
-            new_b_params = filter(lambda p, getattr(p, "_is_new_b", False), self._network.parameters())
+            new_b_params = filter(lambda p: getattr(p, "_is_new_b", False), self._network.parameters())
             for idx, (p_a, p_b) in enumerate(zip(new_a_params, new_b_params)):
                 delta_W = p_b @ p_a
                 ewc_term = self.omega_W[idx].type(torch.float32).to(self.device) * (delta_W**2)
@@ -229,7 +229,7 @@ def run_reference_single_task_finetunes_ewclora(
     from core.scheduler import CosineSchedule
     from core.utils.utils import init_seed
 
-    from .backbone.vit_ewclora import Attention_LoRA, SiNet_vit_ewclora
+    from .backbone.vit_ewclora import SiNet_vit_ewclora
 
     c_kw = config["classifier"]["kwargs"]
     encoder_lr = float(c_kw.get("encoder_lr", 5e-4))
@@ -257,9 +257,8 @@ def run_reference_single_task_finetunes_ewclora(
 
         net = SiNet_vit_ewclora(**bb_kw)
         net.to(device)
-        for module in net.modules():
-            if isinstance(module, Attention_LoRA):
-                module.init_param()
+        # LoRA 已在 SiNet_vit_ewclora.__init__ 内对 image_encoder 调用 init_param（同 low-rank-cl Net.__init__），
+        # 勿再调用：重复 kaiming_uniform 会换一套随机 A，与官方单初始化不一致。
 
         net._cur_task = -1
         net.update_fc(n_cls)

@@ -19,6 +19,23 @@ from .vit_inflora import (
 )
 
 
+def _pretrained_cfg_value(cfg, key, default=None):
+    """timm: resolve_pretrained_cfg may return dict (older) or PretrainedCfg (newer)."""
+    if isinstance(cfg, dict):
+        return cfg[key] if default is None else cfg.get(key, default)
+    return getattr(cfg, key) if default is None else getattr(cfg, key, default)
+
+
+# timm>=1.0: legacy tag names often lack hub weights; map to current registry names.
+_TIMM_VIT_LOAD_ALIASES = {
+    "vit_base_patch16_224_in21k": "vit_base_patch16_224.orig_in21k",
+}
+
+
+def _resolve_timm_vit_variant(variant):
+    return _TIMM_VIT_LOAD_ALIASES.get(variant, variant)
+
+
 class Attention_LoRA(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, scale=None, attn_drop=0.0, proj_drop=0.0, r=64, n_tasks=10):
         super().__init__()
@@ -68,6 +85,7 @@ class Attention_LoRA(nn.Module):
         self.rank = r
 
     def init_param(self):
+        # 与 low-rank-cl models/vit_ewclora.py Attention_LoRA.init_param 一致（在预训练加载之后执行）
         for A in self.lora_A:
             nn.init.zeros_(A.weight)
         for B in self.lora_B:
@@ -84,6 +102,7 @@ class Attention_LoRA(nn.Module):
             self.reset_new_lora(i)
 
     def reset_new_lora(self, idx):
+        # 与 low-rank-cl Attention_LoRA.reset_new_lora 一致
         nn.init.kaiming_uniform_(self.lora_new_A[idx].weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_new_B[idx].weight)
 
@@ -204,8 +223,11 @@ class VisionTransformerEWC(nn.Module):
         block_fn=Block,
         n_tasks=10,
         rank=64,
+        **kwargs,
     ):
         super().__init__()
+        # timm build_model_with_cfg may forward builder-only args (e.g. pretrained_custom_load).
+        _ = kwargs
         assert global_pool in ("", "avg", "token")
 
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
@@ -337,13 +359,15 @@ def _create_vision_transformer_ewc(variant, pretrained=False, **kwargs):
     if kwargs.get("features_only", None):
         raise RuntimeError("features_only not implemented for Vision Transformer models.")
 
+    variant = _resolve_timm_vit_variant(variant)
     pretrained_cfg = resolve_pretrained_cfg(variant)
-    default_num_classes = pretrained_cfg["num_classes"]
+    default_num_classes = _pretrained_cfg_value(pretrained_cfg, "num_classes")
     num_classes = kwargs.get("num_classes", default_num_classes)
     repr_size = kwargs.pop("representation_size", None)
     if repr_size is not None and num_classes != default_num_classes:
         repr_size = None
 
+    # Pretrained ViT has no lora_* / lora_new_* params; strict load would fail on VisionTransformerEWC.
     model = build_model_with_cfg(
         VisionTransformerEWC,
         variant,
@@ -351,7 +375,8 @@ def _create_vision_transformer_ewc(variant, pretrained=False, **kwargs):
         pretrained_cfg=pretrained_cfg,
         representation_size=repr_size,
         pretrained_filter_fn=checkpoint_filter_fn,
-        pretrained_custom_load="npz" in pretrained_cfg["url"],
+        pretrained_custom_load="npz" in (_pretrained_cfg_value(pretrained_cfg, "url", "") or ""),
+        pretrained_strict=False,
         **kwargs,
     )
     return model
@@ -360,15 +385,16 @@ def _create_vision_transformer_ewc(variant, pretrained=False, **kwargs):
 class SiNet_vit_ewclora(nn.Module):
     """ViT-B/16 IN-21K + shared LoRA (EWC-LoRA), multi-head classifiers per task."""
 
-    def __init__(self, total_sessions=10, rank=10, init_cls=10, embd_dim=768, load="vit_base_patch16_224_in21k", **kwargs):
+    def __init__(self, total_sessions=10, rank=10, init_cls=10, embd_dim=768, load="vit_base_patch16_224.orig_in21k", pretrained=True, **kwargs):
         super().__init__()
         _ = kwargs
         model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, n_tasks=total_sessions, rank=rank)
-        self.image_encoder = _create_vision_transformer_ewc(load, pretrained=True, **model_kwargs)
+        self.image_encoder = _create_vision_transformer_ewc(load, pretrained=pretrained, **model_kwargs)
         self.class_num = init_cls
         self.classifier_pool = nn.ModuleList(
             [nn.Linear(embd_dim, self.class_num, bias=True) for _ in range(total_sessions)]
         )
+        # 与 low-rank-cl models/net_ewclora.py Net.__init__ 相同：仅对 encoder 内 Attention_LoRA 初始化
         for module in self.image_encoder.modules():
             if isinstance(module, Attention_LoRA):
                 module.init_param()

@@ -1,4 +1,8 @@
-# EWC-LoRA (ICLR 2026) — CIFAR-100 10×10, aligned with low-rank-cl configs/ewclora/cifar100.json
+# EWC-LoRA (ICLR 2026) — CIFAR-100 10×10，与论文代码 low-rank-cl/configs/ewclora/cifar100.json 对齐：
+#   epochs=20, batch_size=128, rank=10, lrate=5e-4, fc_lrate=5e-3, wd=0, Adam(0.9,0.999),
+#   gamma=1, lambda=1e7, num_workers=16, shuffle=false, seed=0, load=vit_base_patch16_224_in21k（本仓库 timm 映射为 .orig_in21k）
+# 学习率调度：官方 methods/base.py 使用 CosineAnnealingLR(T_max=epochs, eta_min=0)，不用 LibContinual 默认的 CosineSchedule 公式。
+# 验证：官方训练循环内不做 test 集验证，仅 epoch 末 scheduler.step；LibContinual 对 EWCLoRA 也关闭 in-epoch validation（见 core/trainer.py）。
 # Requires: timm ViT-B/16 IN-21K weights, image_size 224.
 # CIFAR-100 图片版（train/类名/图、test/类名/图）: dataset: cifar100，data_root 指向含 train、test 的父目录。
 # 官网 pickle 版: dataset: binary_cifar100（见 core/data/dataset.py）。
@@ -19,11 +23,13 @@ task_num: 10
 
 epoch: 20
 val_per_epoch: 1
+# 覆盖 headers/test.yaml 默认 10；与官方每 task 测一次一致，并避免重复打印相同指标
+testing_times: 1
 n_gpu: 1
 seed: 0
 shuffle: false
 batch_size: 128
-num_workers: 8
+num_workers: 16
 pin_memory: false
 
 optimizer:
@@ -34,9 +40,10 @@ optimizer:
     betas: [0.9, 0.999]
 
 lr_scheduler:
-  name: CosineSchedule
+  name: CosineAnnealingLR
   kwargs:
-    K: 20
+    T_max: 20
+    eta_min: 0.0
 
 backbone:
   name: SiNet_vit_ewclora
@@ -45,7 +52,8 @@ backbone:
     rank: 10
     init_cls: 10
     embd_dim: 768
-    load: vit_base_patch16_224_in21k
+    # timm>=1.0: use .orig_in21k; legacy name vit_base_patch16_224_in21k is auto-aliased in code
+    load: vit_base_patch16_224.orig_in21k
 
 buffer:
   name: LinearBuffer
